@@ -1,0 +1,1 @@
+# Haber Otomasyonu - TTS & Lipsync

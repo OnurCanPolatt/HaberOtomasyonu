@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+*.user
+output/
+temp_tts/
+temp_video/
+appsettings.json

@@ -1,0 +1,191 @@
+{
+  "12": {
+    "inputs": {
+      "audio": "denemeses.ogg",
+      "audioUI": "/api/view?filename=denemeses.ogg&type=input&subfolder=&rand=0.8231721420862638"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "13": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_jehgd_00001.flac&type=temp&subfolder=&rand=0.34628304170410973",
+      "audio": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": "Net ve akıcı bir üslup, haber dilinin sade ve anlaşılır olması açısından gereklidir. Televizyonda yayınlanan haberler geniş bir kitleye hitap eder. Bu nedenle, karmaşık cümleler ve teknik terimler yerine, hedef kitlenin kolaylıkla anlayabileceği bir dil kullanmak, haberin etkisini oldukça artırır.",
+      "temperature": 0.8,
+      "top_k": 1000,
+      "top_p": 0.95,
+      "repetition_penalty": 1.2,
+      "seed": 42,
+      "use_cpu": false,
+      "keep_model_loaded": true,
+      "audio_prompt": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "FL_ChatterboxTurboTTS",
+    "_meta": {
+      "title": "FL Chatterbox Turbo TTS"
+    }
+  },
+  "16": {
+    "inputs": {
+      "text": "Net ve akıcı bir üslup, haber dilinin sade ve anlaşılır olması açısından gereklidir. Televizyonda yayınlanan haberler geniş bir kitleye hitap eder. Bu nedenle, karmaşık cümleler ve teknik terimler yerine, hedef kitlenin kolaylıkla anlayabileceği bir dil kullanmak, haberin etkisini oldukça artırır.",
+      "exaggeration": 0.5,
+      "cfg_weight": 0.5,
+      "temperature": 0.8,
+      "seed": 3949591384,
+      "use_cpu": false,
+      "keep_model_loaded": true,
+      "audio_prompt": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "FL_ChatterboxTTS",
+    "_meta": {
+      "title": "FL Chatterbox TTS"
+    }
+  },
+  "18": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_udaxi_00003.flac&type=temp&subfolder=&rand=0.09902641800686829",
+      "audio": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "19": {
+    "inputs": {
+      "seed": 2926504770,
+      "use_cpu": false,
+      "keep_model_loaded": false,
+      "input_audio": [
+        "12",
+        0
+      ],
+      "target_voice": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "FL_ChatterboxVC",
+    "_meta": {
+      "title": "FL Chatterbox VC"
+    }
+  },
+  "20": {
+    "inputs": {
+      "audio": "İstanbul un iklimi T.mp3",
+      "audioUI": "/api/view?filename=%C4%B0stanbul%20un%20iklimi%20T.mp3&type=input&subfolder=&rand=0.07475265381345131"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "21": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_leorc_00001.flac&type=temp&subfolder=&rand=0.3590867951945943",
+      "audio": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "23": {
+    "inputs": {
+      "dialog_text": "SPEAKER A: Haber metni örnekleri, farklı alanlarda şekillendiği için çeşitlilik gösterir. Ekonomi, spor, siyaset gibi farklı alanlarda yazılan haber metinlerinde, okuyucunun ilgisini çekmek ve bilgi vermek için farklı teknikler kullanır. \nSPEAKER B:Peki, haber metinlerini daha etkili hâle getirmenin yolları nelerdir? Birlikte inceleyelim! ",
+      "exaggeration": 0.5,
+      "cfg_weight": 0.5,
+      "temperature": 0.8,
+      "seed": 1045284806,
+      "use_cpu": false,
+      "keep_model_loaded": false,
+      "speaker_A_Audio": [
+        "12",
+        0
+      ],
+      "speaker_B_Audio": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "FL_ChatterboxDialogTTS",
+    "_meta": {
+      "title": "FL Chatterbox Dialog TTS"
+    }
+  },
+  "24": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_svjup_00001.flac&type=temp&subfolder=&rand=0.3916745704637762",
+      "audio": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "25": {
+    "inputs": {
+      "text": "Net ve akıcı bir üslup, haber dilinin sade ve anlaşılır olması açısından gereklidir. Televizyonda yayınlanan haberler geniş bir kitleye hitap eder. Bu nedenle, karmaşık cümleler ve teknik terimler yerine, hedef kitlenin kolaylıkla anlayabileceği bir dil kullanmak, haberin etkisini oldukça artırır.",
+      "language": "Turkish (tr)",
+      "exaggeration": 0.5,
+      "cfg_weight": 0.5,
+      "temperature": 0.8,
+      "repetition_penalty": 2,
+      "min_p": 0.05,
+      "top_p": 1,
+      "seed": 3502381084,
+      "use_cpu": false,
+      "keep_model_loaded": false,
+      "audio_prompt": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "FL_ChatterboxMultilingualTTS",
+    "_meta": {
+      "title": "FL Chatterbox Multilingual TTS"
+    }
+  },
+  "26": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_dwifg_00001.flac&type=temp&subfolder=&rand=0.07099402249963827",
+      "audio": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  }
+}
