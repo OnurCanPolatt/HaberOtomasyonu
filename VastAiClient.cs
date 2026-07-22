@@ -71,12 +71,33 @@ namespace HaberOtomasyon
                             return $"http://{publicIp}:{mappedPort}";
 
                         Console.WriteLine("  [VastAi] Port tespit edilemedi. Ham veri: " + instance!.ToJsonString());
-                        throw new Exception("Port bilgisi bulunamadı.");
+                        throw new Exception("Port bilgi bulunamadı.");
                     }
                 }
                 Console.WriteLine("  [VastAi] Bekleniyor (instance henüz hazır değil)...");
                 await Task.Delay(10_000);
             }
+        }
+
+        /// <summary>
+        /// İstediğin iç port numarasına karşılık gelen dış (mapped) portu alıp tam adresi döner.
+        /// </summary>
+        public async Task<string> GetServiceUrlAsync(int targetInternalPort)
+        {
+            var response = await _http.GetAsync($"https://console.vast.ai/api/v0/instances/{_instanceId}/");
+            if (response.IsSuccessStatusCode)
+            {
+                var json = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+                var instance = json["instances"] ?? json["instance"] ?? json;
+                string? publicIp = instance?["public_ipaddr"]?.ToString();
+
+                int mappedPort = ExtractMappedPort(instance!, targetInternalPort);
+                if (mappedPort > 0 && !string.IsNullOrEmpty(publicIp))
+                {
+                    return $"http://{publicIp}:{mappedPort}";
+                }
+            }
+            throw new Exception($"Vast.ai API üzerinden {targetInternalPort} portu için harici port bulunamadı.");
         }
 
         private static int ExtractMappedPort(JsonNode instance, int internalPort)
