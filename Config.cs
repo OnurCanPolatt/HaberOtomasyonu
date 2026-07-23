@@ -17,7 +17,6 @@ namespace HaberOtomasyon
         public const string OpenButtonToken = "054789dae36a0e6303cf65e1c874b3d6fd40f7c7f4d07346546aa11df477d86b";
 
         // --- Ollama (yerel LLM) ayarları ---
-        // Kod artık URL'yi dinamik üretiyor; bu adres fallback (yedek) olarak tutulur.
         public const string OllamaBaseUrl = "http://127.0.0.1:8288";
         public const string OllamaModelName = "qwen2.5:7b";
 

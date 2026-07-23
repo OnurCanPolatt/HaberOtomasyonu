@@ -56,48 +56,70 @@ namespace HaberOtomasyon
                 if ((DateTime.UtcNow - start).TotalSeconds > timeoutSeconds)
                     throw new Exception("Zaman aşımı: instance 'running' durumuna geçmedi.");
 
-                var response = await _http.GetAsync($"https://console.vast.ai/api/v0/instances/{_instanceId}/");
-                if (response.IsSuccessStatusCode)
+                try
                 {
-                    var json = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-                    var instance = json["instances"] ?? json["instance"] ?? json;
-                    string? actualStatus = instance?["actual_status"]?.ToString();
-                    string? publicIp = instance?["public_ipaddr"]?.ToString();
-
-                    if (actualStatus == "running" && !string.IsNullOrEmpty(publicIp))
+                    var response = await _http.GetAsync($"https://console.vast.ai/api/v0/instances/{_instanceId}/");
+                    if (response.IsSuccessStatusCode)
                     {
-                        int mappedPort = ExtractMappedPort(instance!, _internalPort);
-                        if (mappedPort > 0)
-                            return $"http://{publicIp}:{mappedPort}";
+                        var json = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+                        var instance = json["instances"] ?? json["instance"] ?? json;
+                        string? actualStatus = instance?["actual_status"]?.ToString();
+                        string? publicIp = instance?["public_ipaddr"]?.ToString();
 
-                        Console.WriteLine("  [VastAi] Port tespit edilemedi. Ham veri: " + instance!.ToJsonString());
-                        throw new Exception("Port bilgi bulunamadı.");
+                        if (actualStatus == "running" && !string.IsNullOrEmpty(publicIp))
+                        {
+                            int mappedPort = ExtractMappedPort(instance!, _internalPort);
+                            if (mappedPort > 0)
+                                return $"http://{publicIp}:{mappedPort}";
+                        }
                     }
                 }
+                catch { }
+
                 Console.WriteLine("  [VastAi] Bekleniyor (instance henüz hazır değil)...");
-                await Task.Delay(10_000);
+                await Task.Delay(5_000);
             }
         }
 
         /// <summary>
         /// İstediğin iç port numarasına karşılık gelen dış (mapped) portu alıp tam adresi döner.
+        /// 429 Too ManyRequests riskine karşı tekrar deneme (retry) mekanizması içerir.
         /// </summary>
-        public async Task<string> GetServiceUrlAsync(int targetInternalPort)
+        public async Task<string> GetServiceUrlAsync(int targetInternalPort, int maxRetries = 5)
         {
-            var response = await _http.GetAsync($"https://console.vast.ai/api/v0/instances/{_instanceId}/");
-            if (response.IsSuccessStatusCode)
+            int attempt = 0;
+            while (attempt < maxRetries)
             {
-                var json = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-                var instance = json["instances"] ?? json["instance"] ?? json;
-                string? publicIp = instance?["public_ipaddr"]?.ToString();
-
-                int mappedPort = ExtractMappedPort(instance!, targetInternalPort);
-                if (mappedPort > 0 && !string.IsNullOrEmpty(publicIp))
+                attempt++;
+                try
                 {
-                    return $"http://{publicIp}:{mappedPort}";
+                    var response = await _http.GetAsync($"https://console.vast.ai/api/v0/instances/{_instanceId}/");
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var json = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+                        var instance = json["instances"] ?? json["instance"] ?? json;
+                        string? publicIp = instance?["public_ipaddr"]?.ToString();
+
+                        int mappedPort = ExtractMappedPort(instance!, targetInternalPort);
+                        if (mappedPort > 0 && !string.IsNullOrEmpty(publicIp))
+                        {
+                            return $"http://{publicIp}:{mappedPort}";
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ağ veya rate-limit hatası durumunda yut ve tekrar dene
+                }
+
+                if (attempt < maxRetries)
+                {
+                    Console.WriteLine($"  [VastAi] Port bilgisi bekleniyor (Deneme {attempt}/{maxRetries})...");
+                    await Task.Delay(4_000);
                 }
             }
-            throw new Exception($"Vast.ai API üzerinden {targetInternalPort} portu için harici port bulunamadı.");
+
+            throw new Exception($"Vast.ai API üzerinden {targetInternalPort} portu için harici port bulunamadı (Çok fazla istek yapılmış olabilir).");
         }
 
         private static int ExtractMappedPort(JsonNode instance, int internalPort)

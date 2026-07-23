@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading.Tasks;
-using haber_otomasyon;
 
 namespace HaberOtomasyon
 {
@@ -14,9 +14,6 @@ namespace HaberOtomasyon
 
             try
             {
-                // =========================================================================
-                // === [1/6] GPU INSTANCE BAŞLATILIYOR (Ollama ve ComfyUI için) ===
-                // =========================================================================
                 Console.WriteLine("=== [1/6] GPU instance başlatılıyor ===");
                 await vast.StartAsync();
 
@@ -24,97 +21,106 @@ namespace HaberOtomasyon
                 string serverUrl = await vast.WaitUntilRunningAsync(Config.InstanceBootTimeoutSeconds);
                 Console.WriteLine($"  Sunucu adresi (ComfyUI): {serverUrl}");
 
-                // Vast.ai API'sinden 8288 (Ollama) için atanan GERÇEK dış portlu adresi çekiyoruz
                 string ollamaUrl = await vast.GetServiceUrlAsync(Config.OllamaInternalPort);
-                Console.WriteLine($"  Ollama adresi (Dinamik): {ollamaUrl}");
+                Console.WriteLine($"  Ollama adresi: {ollamaUrl}");
 
+                var comfy = new ComfyUiClient(serverUrl, Config.OpenButtonToken);
+                var tts = new TtsRunner(comfy);
+                var lipsync = new LipsyncRunner(comfy);
 
-                // =========================================================================
-                // === [3/6] RSS HABERİ ÇEKİLİR VE OLLAMA (LLM) İLE DÜZENLENİR ===
-                // =========================================================================
-                string newsText;
+                Console.WriteLine("=== [3/6] RSS akışından en güncel ve ilgi çekici haber seçiliyor ve işleniyor ===");
+
+                string outputDir = Path.GetDirectoryName(Config.FinalVideoOutputPath)!;
+                Directory.CreateDirectory(outputDir);
+
+                var segments = new List<NewsSegmentResult>();
+                var perSegmentAudioPaths = new List<string>();
+                var perSegmentVideoPaths = new List<string>();
+
                 string? overrideText = GetArg(args, "--text");
 
                 if (!string.IsNullOrEmpty(overrideText))
                 {
-                    Console.WriteLine("\n=== Parametre ile verilen özel haber metni kullanılıyor ===");
-                    newsText = overrideText;
+                    Console.WriteLine("  Parametre ile verilen özel metin kullanılıyor...");
+                    await ProcessOneNewsSegmentAsync(
+                        title: "Özel Metin",
+                        rewrittenText: overrideText,
+                        imageUrls: new List<string>(),
+                        index: 0,
+                        tts, lipsync, segments, perSegmentAudioPaths, perSegmentVideoPaths, outputDir);
                 }
                 else
                 {
-                    Console.WriteLine("\n=== RSS Otomasyonu & LLM Editör Çalıştırılıyor ===");
-
                     var scraper = new NewsScraper();
                     var llmEditor = new NewsEditorLlm(ollamaUrl, Config.OllamaModelName, Config.OpenButtonToken);
 
-                    // --- OLLAMA SAĞLIK KONTROLÜ (RETRY / POLLING) ---
                     Console.WriteLine("  [LLM] Ollama servisinin hazır olması bekleniyor...");
                     await llmEditor.WaitUntilReadyAsync(timeoutSeconds: 120);
 
-                    Console.WriteLine("  1. RSS akışından haberler çekiliyor...");
+                    Console.WriteLine("  RSS akışından başlıklar taranıyor...");
                     var headlines = await scraper.GetHeadlinesAsync(Config.NewsRssUrl);
 
                     if (headlines.Count == 0)
                         throw new Exception("RSS akışından hiç haber çekilemedi!");
 
-                    var selectedNews = headlines[0];
-                    
-                    // HTML encoding temizliği (örnek: &#x27; -> ')
-                    string cleanTitle = WebUtility.HtmlDecode(selectedNews.Title);
-                    Console.WriteLine($"  2. Seçilen Haber: {cleanTitle}");
+                    var newsItem = headlines[0];
+                    string cleanTitle = WebUtility.HtmlDecode(newsItem.Title);
+                    Console.WriteLine($"\n--- Seçilen En Güncel Haber: {cleanTitle} ---");
 
-                    Console.WriteLine("  3. Haber detay metni kazınıyor (Scraping)...");
-                    var article = await scraper.ScrapeArticleAsync(selectedNews.Link);
+                    var article = await scraper.ScrapeArticleAsync(newsItem.Link);
 
-                    Console.WriteLine("  4. Ollama ile spiker metni üretiliyor...");
-                    newsText = await llmEditor.RewriteNewsForTtsAsync(article.FullText);
+                    if (article.ImageUrls.Count == 0)
+                    {
+                        Console.WriteLine("  [Uyarı] Haberde hiç görsel bulunamadı, varsayılan görsel kullanılacak.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  [Bilgi] Habere ait {article.ImageUrls.Count} adet görsel toplandı, slayt için hazırlanacak.");
+                    }
 
-                    // Üretilen metni kaydediyoruz
-                    await File.WriteAllTextAsync(Config.NewsTextFilePath, newsText);
-                    Console.WriteLine($"  5. Üretilen spiker metni kaydedildi: {Config.NewsTextFilePath}");
+                    string rewrittenText = await llmEditor.RewriteSingleArticleAsync(
+                        cleanTitle,
+                        article.FullText);
+
+                    Console.WriteLine($"  [LLM] Düzenlenmiş Metin:\n\"{rewrittenText}\"\n");
+
+                    await ProcessOneNewsSegmentAsync(
+                        cleanTitle, rewrittenText, article.ImageUrls, 0,
+                        tts, lipsync, segments, perSegmentAudioPaths, perSegmentVideoPaths, outputDir);
                 }
 
-                Console.WriteLine($"\nKullanılacak Metin ({newsText.Length} Karakter):\n\"{newsText}\"\n");
+                if (segments.Count == 0)
+                    throw new Exception("Haber işlenemedi!");
 
+                var textLog = new System.Text.StringBuilder();
+                foreach (var seg in segments)
+                {
+                    textLog.AppendLine($"=== {seg.Title} ===");
+                    textLog.AppendLine(seg.RewrittenText);
+                }
+                await File.WriteAllTextAsync(Config.NewsTextFilePath, textLog.ToString());
+                Console.WriteLine($"  Metin kaydedildi: {Config.NewsTextFilePath}");
 
-                // =========================================================================
-                // === [4/6] COMFYUI İŞLEMLERİ (TTS & LIPSYNC) ===
-                // =========================================================================
-                var comfy = new ComfyUiClient(serverUrl, Config.OpenButtonToken);
+                Console.WriteLine("\n=== [4/6] Ses dosyası hazırlanıyor ===");
+                string fullAudioPath = Path.Combine(outputDir, "full_bulletin_audio.flac");
+                MediaUtils.ConcatFiles(perSegmentAudioPaths, fullAudioPath, reencodeAudio: true);
 
-                Console.WriteLine("=== ComfyUI'nin hazır olması bekleniyor ===");
-                await comfy.WaitUntilReadyAsync(Config.ComfyUiReadyTimeoutSeconds);
+                Console.WriteLine("=== [5/6] Lipsync videosu hazırlanıyor ===");
+                string fullLipsyncVideoPath = Path.Combine(outputDir, "full_bulletin_lipsync.mp4");
+                File.Copy(perSegmentVideoPaths[0], fullLipsyncVideoPath, overwrite: true);
 
-                Console.WriteLine("=== Ses üretiliyor (TTS) ===");
-                var tts = new TtsRunner(comfy);
-                string generatedAudioPath = await tts.GenerateAsync(
-                    newsText,
-                    Config.ReferenceVoicePath,
-                    Config.GeneratedAudioOutputPath);
-                Console.WriteLine($"  Üretilen ses: {generatedAudioPath}");
-
-                // MEMORY TEMİZLEME (TTS modellerini VRAM'den boşaltır)
-                await comfy.FreeMemoryAsync();
-
-                // =========================================================================
-                // === [5/6] LIPSYNC VİDEOSU ÜRETİLİYOR ===
-                // =========================================================================
-                Console.WriteLine("=== [5/6] Lipsync videosu üretiliyor ===");
-                var lipsync = new LipsyncRunner(comfy);
-                string tempAudioDir = Path.Combine(Path.GetDirectoryName(Config.GeneratedAudioOutputPath)!, "temp_tts");
-
-                string finalVideoPath = await lipsync.GenerateBatchAsync(
-                    Config.ReferenceImagePath,
-                    tempAudioDir,
+                Console.WriteLine("=== [6/6] Dikey (9:16) Reels videosu oluşturuluyor (Görseller slayt olarak ekleniyor) ===");
+                var videoComposer = new VideoComposer();
+                string finalVideoPath = await videoComposer.ComposeReelsAsync(
+                    segments,
+                    fullLipsyncVideoPath,
+                    fullAudioPath,
                     Config.FinalVideoOutputPath);
 
-                // =========================================================================
-                // === [6/6] GPU INSTANCE DURDURULUYOR ===
-                // =========================================================================
-                Console.WriteLine("=== [6/6] GPU instance durduruluyor ===");
+                Console.WriteLine("=== GPU instance durduruluyor ===");
                 await vast.StopAsync();
 
-                Console.WriteLine($"\nBitti! ✅  Final video: {finalVideoPath}");
+                Console.WriteLine($"\nBitti! ✅  Final dikey reels video: {finalVideoPath}");
                 return 0;
             }
             catch (Exception ex)
@@ -123,15 +129,49 @@ namespace HaberOtomasyon
                 if (ex.InnerException != null)
                     Console.WriteLine($"  İç hata: {ex.InnerException.Message}");
 
-                Console.WriteLine("Güvenlik için GPU'yu yine de durdurmayı deniyorum...");
-                try
-                {
-                    await vast.StopAsync();
-                }
-                catch { /* zaten kapalı olabilir */ }
+                Console.WriteLine("Güvenlik için GPU'yu durduruyorum...");
+                try { await vast.StopAsync(); } catch { }
 
                 return 1;
             }
+        }
+
+        private static async Task ProcessOneNewsSegmentAsync(
+            string title, string rewrittenText, List<string> imageUrls, int index,
+            TtsRunner tts, LipsyncRunner lipsync,
+            List<NewsSegmentResult> segments, List<string> audioPaths, List<string> videoPaths,
+            string outputDir)
+        {
+            Console.WriteLine($"  Ses üretiliyor (TTS)...");
+            string segmentAudioPath = Path.Combine(outputDir, $"segment_{index}_audio.flac");
+            var ttsResult = await tts.GenerateAsync(rewrittenText, Config.ReferenceVoicePath, segmentAudioPath,
+                tempSubfolderName: $"temp_tts_{index}");
+
+            Console.WriteLine($"  Lipsync videosu üretiliyor...");
+            string segmentVideoPath = Path.Combine(outputDir, $"segment_{index}_video.mp4");
+            await lipsync.GenerateFromSentenceChunksAsync(
+                Config.ReferenceImagePath, ttsResult.SentenceChunkPaths, segmentVideoPath,
+                tempSubfolderName: $"temp_lipsync_{index}");
+
+            double actualVideoDuration = MediaUtils.GetDurationSeconds(segmentVideoPath);
+            Console.WriteLine($"  Video süresi: {actualVideoDuration:F1} saniye");
+
+            try
+            {
+                var tempDir = Path.Combine(outputDir, $"temp_tts_{index}");
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+            catch { }
+
+            segments.Add(new NewsSegmentResult
+            {
+                Title = title,
+                RewrittenText = rewrittenText,
+                ImageUrls = imageUrls,
+                AudioDurationSeconds = actualVideoDuration
+            });
+            audioPaths.Add(segmentAudioPath);
+            videoPaths.Add(segmentVideoPath);
         }
 
         static string? GetArg(string[] args, string name)

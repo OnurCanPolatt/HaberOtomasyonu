@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -8,6 +7,15 @@ using System.Threading.Tasks;
 
 namespace HaberOtomasyon
 {
+    /// <summary>Bir TTS üretiminin sonucu: birleşik tam ses dosyası + cümle sınırlarını koruyan ayrı parçalar.</summary>
+    public class TtsResult
+    {
+        public string MergedAudioPath { get; set; } = "";
+        /// <summary>Her biri TAM bir cümleye karşılık gelen, sırayla üretilmiş ses dosyaları.
+        /// Lipsync bu sınırları kullanarak asla cümle ortasından kesmez.</summary>
+        public List<string> SentenceChunkPaths { get; set; } = new();
+    }
+
     public class TtsRunner
     {
         private readonly ComfyUiClient _comfy;
@@ -17,7 +25,8 @@ namespace HaberOtomasyon
             _comfy = comfy;
         }
 
-        public async Task<string> GenerateAsync(string newsText, string referenceVoicePath, string outputPath)
+        public async Task<TtsResult> GenerateAsync(string newsText, string referenceVoicePath, string outputPath,
+            string tempSubfolderName = "temp_tts")
         {
             if (!File.Exists(Config.TtsWorkflowPath))
                 throw new Exception($"TTS workflow bulunamadı: {Config.TtsWorkflowPath}");
@@ -25,19 +34,17 @@ namespace HaberOtomasyon
             Console.WriteLine("[TTS] Referans ses yükleniyor...");
             string uploadedVoiceName = await _comfy.UploadFileAsync(referenceVoicePath);
 
-            // 1. Metni Chatterbox'ın çökmesini önleyecek küçük parçalara bölüyoruz
             var textChunks = SplitTextIntoChunks(newsText, maxChars: 200);
-            Console.WriteLine($"[TTS] Haber metni {textChunks.Count} parçaya bölündü.");
+            Console.WriteLine($"[TTS] Metin {textChunks.Count} cümle/parçaya bölündü.");
 
             var generatedAudioFiles = new List<string>();
-            string tempDirectory = Path.Combine(Path.GetDirectoryName(outputPath)!, "temp_tts");
+            string tempDirectory = Path.Combine(Path.GetDirectoryName(outputPath)!, tempSubfolderName);
             Directory.CreateDirectory(tempDirectory);
 
-            // 2. Her parçayı sırayla ComfyUI'a gönderiyoruz
             for (int i = 0; i < textChunks.Count; i++)
             {
                 Console.WriteLine($"[TTS] Parça {i + 1}/{textChunks.Count} işleniyor...");
-                
+
                 var workflow = JsonNode.Parse(await File.ReadAllTextAsync(Config.TtsWorkflowPath))!.AsObject();
 
                 workflow[Config.TtsNodeIdAudioPrompt]!["inputs"]!["audio"] = uploadedVoiceName;
@@ -48,19 +55,23 @@ namespace HaberOtomasyon
 
                 string chunkAudioPath = Path.Combine(tempDirectory, $"part_{i}.flac");
                 await _comfy.DownloadNodeOutputAsync(historyEntry, Config.TtsNodeIdPreviewAudio, chunkAudioPath, "audio", "files", "gifs");
-                
+
                 generatedAudioFiles.Add(chunkAudioPath);
             }
 
-            // 3. Elde edilen tüm ses dosyalarını FFmpeg ile tek bir dosyada birleştiriyoruz
-            Console.WriteLine("[TTS] Ses parçaları tek bir dosyada birleştiriliyor...");
-            MergeAudioFiles(generatedAudioFiles, outputPath);
-            return outputPath;
+            Console.WriteLine("[TTS] Ses parçaları birleştiriliyor (tam bülten sesi için)...");
+            MediaUtils.ConcatFiles(generatedAudioFiles, outputPath, reencodeAudio: true);
+
+            // ÖNEMLİ: temp klasörü ARTIK SİLMİYORUZ - Lipsync bu cümle parçalarını
+            // (sınırlarını koruyarak) kullanacak, loop'un cümle ortasında değil
+            // sadece cümle bitiminde (noktada) yenilenmesi için bu şart.
+            return new TtsResult
+            {
+                MergedAudioPath = outputPath,
+                SentenceChunkPaths = generatedAudioFiles
+            };
         }
 
-        /// <summary>
-        /// Uzun metni noktalama işaretlerinden bölerek güvenli boyutlarda parçalar oluşturur.
-        /// </summary>
         private List<string> SplitTextIntoChunks(string text, int maxChars = 200)
         {
             var sentences = text.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
@@ -84,41 +95,9 @@ namespace HaberOtomasyon
             }
 
             if (!string.IsNullOrEmpty(currentChunk))
-            {
                 chunks.Add(currentChunk.Trim() + ".");
-            }
 
             return chunks;
-        }
-
-        /// <summary>
-        /// FFmpeg kullanarak parçalanmış ses dosyalarını uç uca ekler.
-        /// </summary>
-        private void MergeAudioFiles(List<string> filePaths, string outputPath)
-        {
-            string listFilePath = Path.Combine(Path.GetDirectoryName(outputPath)!, "files.txt");
-    
-            // FFmpeg concat listesi oluştur
-            var lines = filePaths.Select(f => $"file '{f.Replace("\\", "/")}'");
-            File.WriteAllLines(listFilePath, lines);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                // NOT: -c copy yerine -c:a flac kullanarak tüm parçaları doğru zaman akışıyla birleştiriyoruz
-                Arguments = $"-y -f concat -safe 0 -i \"{listFilePath}\" -c:a flac \"{outputPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using (var process = Process.Start(startInfo))
-            {
-                process?.WaitForExit();
-            }
-
-            if (File.Exists(listFilePath)) File.Delete(listFilePath);
         }
     }
 }
