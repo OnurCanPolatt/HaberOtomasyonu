@@ -66,21 +66,31 @@ namespace HaberOtomasyon
         /// Seçici olarak hash'lenmiş class isimleri yerine kararlı yapılar kullanır:
         /// main[role='main'] içindeki tüm &lt;p&gt; ve &lt;img&gt; etiketleri.
         /// </summary>
-        public async Task<NewsArticle> ScrapeArticleAsync(string articleUrl)
+public async Task<NewsArticle> ScrapeArticleAsync(string articleUrl)
         {
             var html = await _http.GetStringAsync(articleUrl);
 
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            var mainNode = doc.DocumentNode.SelectSingleNode("//main[@role='main']");
+            var mainNode = doc.DocumentNode.SelectSingleNode("//main");
             if (mainNode == null)
-                throw new Exception($"Makale gövdesi bulunamadı (main[role='main'] yok): {articleUrl}");
+                throw new Exception($"Makale gövdesi bulunamadı (main yok): {articleUrl}");
+
+            // 1. İstenmeyen öneri, en çok okunanlar veya reklam section'larını DOM'dan tamamen siliyoruz
+            var unwantedSections = mainNode.SelectNodes(".//section[contains(@class, 'topic-discovery') or contains(@class, 'most-read') or contains(@class, 'advertisement') or contains(@class, 'social-links')]");
+            if (unwantedSections != null)
+            {
+                foreach (var sec in unwantedSections)
+                {
+                    sec.Remove(); // Çöp/öneri alanları silindi, böylece içindeki metin ve görseller de yok oldu
+                }
+            }
 
             // Başlık - genelde ilk <h1>
             string title = doc.DocumentNode.SelectSingleNode("//h1")?.InnerText.Trim() ?? "";
 
-            // Tüm paragrafları birleştir
+            // 2. Artık arındırılmış mainNode içerisindeki paragrafları alıyoruz
             var paragraphNodes = mainNode.SelectNodes(".//p");
             var paragraphs = new List<string>();
             if (paragraphNodes != null)
@@ -88,13 +98,19 @@ namespace HaberOtomasyon
                 foreach (var p in paragraphNodes)
                 {
                     string text = HtmlEntity.DeEntitize(p.InnerText).Trim();
-                    // Çok kısa/boş satırları (buton metni, "Abone ol" gibi kalıntıları) ele
-                    if (text.Length > 15)
+                    
+                    // Çok kısa/boş satırları, yasal uyarıları veya çöp kalıntıları ele
+                    if (text.Length > 15 && 
+                        !text.StartsWith("Fotoğraf kaynağı") && 
+                        !text.Contains("BBC Türkçe") && 
+                        !text.StartsWith("Abone ol"))
+                    {
                         paragraphs.Add(text);
+                    }
                 }
             }
 
-            // Görselleri topla (figure > img)
+            // 3. Görselleri sadece temizlenmiş alan içindeki <figure> etiketlerinden topluyoruz
             var imageNodes = mainNode.SelectNodes(".//figure//img");
             var imageUrls = new List<string>();
             if (imageNodes != null)
@@ -103,7 +119,7 @@ namespace HaberOtomasyon
                 {
                     string? src = img.GetAttributeValue("src", null);
                     if (string.IsNullOrEmpty(src))
-                        src = img.GetAttributeValue("data-src", null); // lazy-load görseller için yedek
+                        src = img.GetAttributeValue("data-src", null);
 
                     if (!string.IsNullOrEmpty(src) && !imageUrls.Contains(src))
                         imageUrls.Add(src);
@@ -118,8 +134,7 @@ namespace HaberOtomasyon
             };
 
             Console.WriteLine($"  [NewsScraper] Makale çekildi: \"{title}\" " +
-                               $"({paragraphs.Count} paragraf, {imageUrls.Count} görsel)");
+                               $"({paragraphs.Count} temiz paragraf, {imageUrls.Count} geçerli görsel)");
             return article;
-        }
-    }
+        }    }
 }

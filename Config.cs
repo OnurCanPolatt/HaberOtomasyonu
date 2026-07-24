@@ -18,7 +18,7 @@ namespace HaberOtomasyon
 
         // --- Ollama (yerel LLM) ayarları ---
         public const string OllamaBaseUrl = "http://127.0.0.1:8288";
-        public const string OllamaModelName = "qwen2.5:7b";
+        public const string OllamaModelName = "llama3.1:8b";
 
         // --- Workflow JSON dosya yolları ---
         public const string TtsWorkflowPath = "tts_workflow.json";

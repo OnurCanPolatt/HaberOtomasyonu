@@ -24,13 +24,15 @@ namespace HaberOtomasyon
             string fullAudioPath,
             string finalOutputPath)
         {
-            string workDir = Path.Combine(Path.GetDirectoryName(finalOutputPath)!, "composer_temp");
+            // Projenin çalıştığı dizinde "HaberGorselleri" adında kalıcı bir klasör açar
+            string workDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HaberGorselleri");
             Directory.CreateDirectory(workDir);
 
             try
             {
                 var seg = segments[0];
-                Console.WriteLine($"[VideoComposer] Habere ait görseller hazırlanıyor (Toplam {seg.ImageUrls.Count} görsel): \"{seg.Title}\"");
+                Console.WriteLine(
+                    $"[VideoComposer] Habere ait görseller hazırlanıyor (Toplam {seg.ImageUrls.Count} görsel): \"{seg.Title}\"");
 
                 // Habere ait tüm görselleri indiriyoruz (limit sınırını genişlettik)
                 var localImages = await DownloadMediaFilesAsync(seg.ImageUrls, workDir, prefix: "img_");
@@ -54,7 +56,6 @@ namespace HaberOtomasyon
             }
             finally
             {
-                try { Directory.Delete(workDir, true); } catch { }
             }
         }
 
@@ -79,8 +80,12 @@ namespace HaberOtomasyon
                     localFiles.Add(localPath);
                     index++;
                 }
-                catch { }
+                catch
+                {
+                }
             }
+
+            Console.WriteLine($"  [VideoComposer] Toplam {localFiles.Count} görsel indirildi ve klasöre kaydedildi.");
             return localFiles;
         }
 
@@ -116,6 +121,7 @@ namespace HaberOtomasyon
                 lines.Add($"file '{img.Replace("\\", "/")}'");
                 lines.Add($"duration {durationPerImage.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
             }
+
             // FFmpeg concat demuxer gereksinimi için son görseli tekrar ekliyoruz
             if (imagePaths.Count > 0)
             {
@@ -126,7 +132,7 @@ namespace HaberOtomasyon
 
             int fpsForZoom = 30;
             int framesPerImage = (int)(durationPerImage * fpsForZoom);
-            
+
             string vf = $"scale=1000:880:force_original_aspect_ratio=decrease," +
                         $"pad=1000:880:(ow-iw)/2:(oh-ih)/2:color=0x1a1a1a," +
                         $"pad=1080:948:(ow-iw)/2:(oh-ih)/2:color=0x111111," +
@@ -149,7 +155,8 @@ namespace HaberOtomasyon
             if (File.Exists(listFile)) File.Delete(listFile);
         }
 
-        private void MergeVerticalReelsWithStyle(string topVideo, string bottomVideo, string audioPath, string outputPath)
+        private void MergeVerticalReelsWithStyle(string topVideo, string bottomVideo, string audioPath,
+            string outputPath)
         {
             string filterComplex = "[0:v]scale=1080:948,fps=30[v0];" +
                                    "[1:v]scale=1000:900:force_original_aspect_ratio=decrease," +

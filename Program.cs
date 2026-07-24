@@ -62,8 +62,9 @@ namespace HaberOtomasyon
 
                     if (headlines.Count == 0)
                         throw new Exception("RSS akışından hiç haber çekilemedi!");
-
-                    var newsItem = headlines[0];
+                    
+                    var random = new Random();
+                    var newsItem = headlines[random.Next(headlines.Count)];
                     string cleanTitle = WebUtility.HtmlDecode(newsItem.Title);
                     Console.WriteLine($"\n--- Seçilen En Güncel Haber: {cleanTitle} ---");
 
@@ -75,7 +76,8 @@ namespace HaberOtomasyon
                     }
                     else
                     {
-                        Console.WriteLine($"  [Bilgi] Habere ait {article.ImageUrls.Count} adet görsel toplandı, slayt için hazırlanacak.");
+                        Console.WriteLine(
+                            $"  [Bilgi] Habere ait {article.ImageUrls.Count} adet görsel toplandı, slayt için hazırlanacak.");
                     }
 
                     string rewrittenText = await llmEditor.RewriteSingleArticleAsync(
@@ -98,6 +100,7 @@ namespace HaberOtomasyon
                     textLog.AppendLine($"=== {seg.Title} ===");
                     textLog.AppendLine(seg.RewrittenText);
                 }
+
                 await File.WriteAllTextAsync(Config.NewsTextFilePath, textLog.ToString());
                 Console.WriteLine($"  Metin kaydedildi: {Config.NewsTextFilePath}");
 
@@ -109,7 +112,8 @@ namespace HaberOtomasyon
                 string fullLipsyncVideoPath = Path.Combine(outputDir, "full_bulletin_lipsync.mp4");
                 File.Copy(perSegmentVideoPaths[0], fullLipsyncVideoPath, overwrite: true);
 
-                Console.WriteLine("=== [6/6] Dikey (9:16) Reels videosu oluşturuluyor (Görseller slayt olarak ekleniyor) ===");
+                Console.WriteLine(
+                    "=== [6/6] Dikey (9:16) Reels videosu oluşturuluyor (Görseller slayt olarak ekleniyor) ===");
                 var videoComposer = new VideoComposer();
                 string finalVideoPath = await videoComposer.ComposeReelsAsync(
                     segments,
@@ -130,7 +134,13 @@ namespace HaberOtomasyon
                     Console.WriteLine($"  İç hata: {ex.InnerException.Message}");
 
                 Console.WriteLine("Güvenlik için GPU'yu durduruyorum...");
-                try { await vast.StopAsync(); } catch { }
+                try
+                {
+                    await vast.StopAsync();
+                }
+                catch
+                {
+                }
 
                 return 1;
             }
@@ -161,7 +171,9 @@ namespace HaberOtomasyon
                 var tempDir = Path.Combine(outputDir, $"temp_tts_{index}");
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
-            catch { }
+            catch
+            {
+            }
 
             segments.Add(new NewsSegmentResult
             {
@@ -177,7 +189,8 @@ namespace HaberOtomasyon
         static string? GetArg(string[] args, string name)
         {
             for (int i = 0; i < args.Length - 1; i++)
-                if (args[i] == name) return args[i + 1];
+                if (args[i] == name)
+                    return args[i + 1];
             return null;
         }
     }
